@@ -1,0 +1,31 @@
+# Core data stack
+pandas>=2.2
+numpy>=1.26
+pyarrow>=15
+pyyaml>=6
+
+# Market data
+yfinance==1.3.0        # pinned known-good version; Yahoo changes often break yfinance, upgrade deliberately
+curl_cffi>=0.7         # browser-impersonating HTTP client (used by yfinance and our NSE fetchers)
+
+# Features / strategies (Phase 2)
+scipy>=1.11            # stats (z-scores, linear regression) for pairs/patterns
+statsmodels>=0.14       # cointegration (Engle-Granger / Johansen) for pairs trading
+scikit-learn>=1.4       # regime classifier (Gaussian HMM-style clustering), factor ranking
+TA-Lib>=0.6             # candlestick pattern cross-check in tests (our own detectors are the runtime path)
+
+# Broker (Phase 3+)
+python-dotenv>=1.0      # loads .env (broker credentials) into the environment for scripts
+smartapi-python>=1.5    # Angel One SmartAPI SDK (SmartConnect, generateSession, getCandleData)
+logzero>=1.7            # smartapi-python imports this directly but doesn't declare it as a dependency
+pyotp>=2.9              # generates the TOTP login code from ANGEL_TOTP_SECRET, no manual OTP entry
+websocket-client>=1.7   # required by smartapi-python for its live feed (not used yet - data-only for now)
+
+# Reporting (Phase 3)
+plotly>=5.20            # self-contained interactive HTML reports, no server
+
+# Testing
+pytest>=8
+
+# Packaging (builds Dashboard.exe - see scripts/build_dashboard_exe.py; not needed to run the system)
+pyinstaller>=6.22

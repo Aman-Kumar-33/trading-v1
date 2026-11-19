@@ -1,0 +1,7 @@
+v1:
+  min_atr_buffer_mult: 0.5
+  volume_confirm_ratio: 1.2
+  # 2026-10-02 edge audit: no fixed target, no regime gate, volume > 5x average (see volume_spike_momentum.yaml)
+  target_r_multiples: []
+  min_volume_ratio: 5.0
+  no_entry_after: '14:45'

@@ -1,0 +1,7 @@
+v1:
+  entry_atr_mult: 2.0
+  stop_atr_buffer: 0.3
+  no_entry_after: '14:45'
+  # Mean-reversion to VWAP fails badly against a real trend (real run: 20% win rate, -529k) - only
+  # trade it when the regime classifier says the market is actually range-bound.
+  allowed_regimes: [ranging]

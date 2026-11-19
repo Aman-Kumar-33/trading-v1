@@ -1,0 +1,10 @@
+v1:
+  min_gap_atr: 0.5
+  large_gap_atr: 2.0
+  # 2026-11-02: widened 0.3 -> 1.0 - backtest (10 nifty200 symbols, full history) showed 0.3's stop was
+  # tight enough to fail the fee hurdle on most large-cap signals; 1.0 roughly doubled net P&L (+24,491 ->
+  # +52,035) and raised win rate 55% -> 58%, not just trade count.
+  stop_atr_buffer: 1.0
+  # 2026-10-02 edge audit: no fixed target, volume > 5x average (see volume_spike_momentum.yaml)
+  target_r_multiples: []
+  min_volume_ratio: 5.0

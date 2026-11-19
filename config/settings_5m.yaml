@@ -1,0 +1,32 @@
+# The "5 minute" system: a second, completely separate copy of the paper-trading system (own dashboard port, own
+# database, own logs, own history cache, own Telegram label). Everything not listed here is inherited from
+# settings.yaml. Run it with both_systems.exe (it starts both systems) or scripts/dashboard_5m.py.
+extends: settings.yaml
+
+instance:
+  name: "5 minute"
+  label: "5M"                       # prefix of every Telegram message from this system
+  port: 8767                        # the main system's dashboard is on 8766
+  live_enabled: false               # paper trading only
+  auto_start: true                  # paper trading starts by itself at trading.auto_start_time (09:15) on trading days
+  follow: settings.yaml             # trades ONLY the stocks the main system trades (trade_universe: all = the whole NIFTY 50)
+  links:
+    - {name: "Main system (15m)", url: "http://127.0.0.1:8766/"}
+
+paths:
+  live_data: data_5m                # own algo.db, state, history cache and candles - nothing is shared with the main system
+  logs: logs_5m
+
+trading:
+  intraday_timeframe: 5m
+  # Signals come ONLY from completed 5m candles (nothing is read from the forming candle):
+  #   BUY  - the MACD line crosses ABOVE the signal line (it was at/below it, then above it) and, on a closed candle, is more than
+  #          the tolerance above it. Tolerance = max(0.02, 0.02 x the stock's 5m ATR): 0.02 alone is ~30 paise, fine for a Rs 300
+  #          stock but noise for MARUTI (Rs 12,700), so it is scaled to each stock's volatility.
+  #   SELL - the next intersection: the first closed candle with MACD below the signal line. No tolerance on the exit.
+  signal_mode: candle_confirmed
+  macd_cross_tolerance: 0.02        # the floor (cheap stocks sit at it)
+  macd_cross_tolerance_atr: 0.02    # x the stock's 5m ATR
+  stop_loss_pct: 0.05               # every position also has a stop 5% below its entry price (checked on every tick)
+  research_dir: macd_tolerance_data_5m
+  symbols: []

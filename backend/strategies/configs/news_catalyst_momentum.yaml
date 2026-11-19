@@ -1,0 +1,13 @@
+v1:
+  lookback_bars: 3
+  min_move_atr: 2.5
+  min_volume_ratio: 2.0
+  news_score_min: 0.4
+  stop_atr_mult: 1.0
+  target_r_multiples:
+  - 1.5
+  - 3.0
+  no_entry_after: '14:45'
+  # A news catalyst should extend an existing move, not create one out of a chop day (27% win
+  # rate, -135k).
+  allowed_regimes: [trending_up, trending_down]

@@ -1,0 +1,6 @@
+v1:
+  entry_z: 2.5
+  exit_z: 0.5
+  stop_z: 4.0
+  zscore_window: 60
+  no_entry_after: '23:59'

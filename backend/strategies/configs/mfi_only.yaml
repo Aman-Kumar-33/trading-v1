@@ -1,0 +1,4 @@
+v1:
+  oversold: 20.0
+  overbought: 80.0
+  wide_stop_atr_mult: 10.0

@@ -1,0 +1,8 @@
+v1:
+  fast_col: ema_50
+  slow_col: ema_200
+  stop_atr_mult: 3.0
+  # 2026-10-02: shorts aren't placeable in NSE delivery; 1% hysteresis band against whipsaw
+  # (802 walk-forward trades had gross +5.3L < fees 7.0L). Old values in backups/.
+  allow_short: false
+  cross_band_pct: 0.01

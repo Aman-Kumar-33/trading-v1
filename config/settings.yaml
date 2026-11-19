@@ -1,0 +1,189 @@
+# Main configuration for the algo trading system.
+# Relative paths are resolved against the algo-system/ folder.
+
+paths:
+  backtest_data: ../backtest_data   # historical data lake (raw + clean + reports)
+  live_data: data                   # SQLite database + live/replay candle & tick snapshots
+  logs: logs
+
+# Which dashboard this is. The "5 minute" system (settings_5m.yaml) overrides these.
+instance:
+  name: ""                          # empty = the main system
+  port: 8766
+  auto_start: true                  # paper trading starts by itself at 09:00 on trading days
+  history_peers: [settings_5m.yaml] # the dashboard also reads this system's cached Angel history (charts only - no effect on trading)
+  links:                            # extra systems shown in the sidebar
+    - {key: five_minute, name: "5 Minute System", url: "http://127.0.0.1:8767/", exe: both_systems.exe, script: scripts/both_systems.py, args: ["--only", "5m"]}
+
+market:
+  timezone: Asia/Kolkata
+  pre_open: "09:00"                 # NSE pre-open call auction starts
+  open: "09:15"                     # continuous trading starts
+  intraday_square_off: "15:15"      # no new intraday entries after this, open intraday positions are closed
+  close: "15:30"
+  eod_freeze_delay_minutes: 5       # dashboard switches to static end-of-day view this long after close
+  holidays_file: config/nse_holidays.yaml
+  # Special sessions (e.g. Muhurat trading) are added to nse_holidays.yaml under special_sessions.
+
+# Timeframes the live candle builder produces from ticks.
+candles:
+  timeframes: [1m, 5m, 15m, 30m, 1h, 1d]
+
+# ---------------------------------------------------------------------------
+# Live / paper trading (scripts/run_trading.py). Mode is chosen on the command line; PAPER is the default.
+# ---------------------------------------------------------------------------
+trading:
+  capital: 0                        # SET YOUR REAL TRADING CAPITAL (Rs). Live mode refuses to start at 0.
+  paper_capital: 1000000            # notional capital for paper mode
+  # Trade size is decided per signal by backend/execution/sizing.py: a share of capital between min and max
+  # (5/10/15/25% tiers) from how clean the MACD cross is, the stock's trending score and its volatility.
+  min_position_pct: 0.05
+  default_position_pct: 0.10        # used when a signal carries no conviction data (e.g. carried over from the close)
+  max_position_pct: 0.25            # hard ceiling for any single trade
+  max_open_positions: 15            # at most 15 positions open at a time in each system; a 16th BUY is skipped until one exits (0 = no limit)
+  record_research_data: false       # true = save every tick/bar/MACD value/decision of the listed stocks for the tolerance study. Off: with all 50
+                                    # stocks it would also pull 50 official bar series from Angel after the close, in competition with the
+                                    # after-close history load (the study is finished)
+  research_dir: macd_tolerance_data # ... into <project>/macd_tolerance_data/<date>/ (see backend/data/macd_recorder.py)
+  trade_universe: all               # all = every stock of `universe` (the whole NIFTY 50) is monitored and traded - no ranking, no top-10 list
+                                    # (anything else = auto mode picks the top `trending_count` stocks after the close)
+  trending_count: 10                # only used when trade_universe is not "all"
+  intraday_capital_pct: 0.8         # the 80/20 split (only used by the unused RiskManager gate and live cash warning)
+  long_term_capital_pct: 0.2
+  risk_pct_per_trade: 0.005         # 0.5% of the bucket per trade to start (raise only after paper proves out)
+  max_concurrent_positions: 15      # same limit for the (unused) RiskManager gate
+  daily_loss_limit_pct: 0.04        # kill switch for the day - loosened from 0.02 so paper strategies get
+                                     # a real chance to prove themselves instead of being cut off early
+  max_consecutive_losses: 8         # loosened from 4, same reason - paper money only
+  max_entries_per_symbol_per_day: 2
+  max_cost_to_risk_intraday: 0.10   # skip trades whose fees exceed 10% of their risk
+  max_cost_to_risk_long_term: 0.25
+  min_reward_to_cost: 3.0
+  intraday_leverage: 1.0            # no MIS leverage
+  carry_longs: false                # false = INTRADAY ONLY: every open position is sold at `square_off`, no new buys after it
+                                    # (true = unsold longs are carried overnight until MACD says sell)
+  max_carry_days: 30                # safety net only (carry_longs: true): a long still open after this many days is sold
+  auto_start_time: "09:10"           # both systems' trading processes start by themselves at this time on trading days - logged in and
+                                    # listening five minutes before the open, so the first tick of 09:15 is theirs
+  trade_start: "09:15"              # no order before this time (both systems)
+  square_off: "15:00"               # all positions are closed at market at this time; ahead of Angel One's own 15:15 auto square-off
+  profit_lock_stop: false           # false = no sells except MACD crosses / manual exits (true = old breakeven stop)
+  trail_stop: false                 # same - the R-multiple trailing stop is off
+  symbols: []                       # HAND-PICKED LIST, e.g. [RELIANCE, HDFCBANK, ICICIBANK]. Empty (and an empty
+                                    # dashboard box) = auto mode: today's top `trending_count` stocks of `universe`.
+                                    # (the dashboard's stock box and `run_trading.py --symbols` override this)
+  universe: nifty50                 # the index the trending picker ranks in auto mode
+  intraday_timeframe: 15m
+  history_days: 60                  # calendar days of Angel One bars fetched at start as MACD warm-up (~40 sessions)
+  history_bars: 500                 # most-recent bars kept in the series fed to the strategy
+  heartbeat_seconds: 120            # no tick for this long during market hours -> block new entries
+
+# ---------------------------------------------------------------------------
+# yfinance downloader - rate limit protection
+# ---------------------------------------------------------------------------
+yfinance:
+  # NOTE: Yahoo's chart API is one HTTP request per symbol, even when yf.download() is given a list.
+  # So the limiter counts *symbols*, not calls: a chunk of 5 symbols consumes 5 tokens.
+  requests_per_minute: 30           # global cap on per-symbol requests (1 every 2 s on average)
+  burst: 5                          # max requests allowed back-to-back before the limit kicks in
+  chunk_size: 5                     # symbols per yf.download() call (small chunks keep bursts small)
+  request_timeout_seconds: 30
+  max_retries: 5                    # per job, for rate-limit / network errors
+  backoff_base_seconds: 30          # 30 -> 60 -> 120 -> ... (+ random jitter)
+  backoff_max_seconds: 900
+  circuit_breaker_threshold: 3      # this many rate-limit hits in a row ...
+  circuit_breaker_pause_seconds: 1800   # ... pauses the whole downloader for 30 min
+  lock_stale_hours: 12              # a downloader lock file older than this is treated as abandoned
+
+  # How far back Yahoo serves each interval, and how we page through it.
+  # overlap_days:  on incremental updates re-fetch a little already-stored history so revised bars get replaced.
+  # refresh_hours: a symbol updated successfully within this many hours is skipped (makes re-runs after a
+  #                crash or block cheap). 15m/1h only need a weekly refresh: Yahoo keeps 59/729 days of them,
+  #                and going forward they can also be rebuilt from our own 5m archive.
+  # window_days: max calendar days per request (start..end, end exclusive). Windows containing no trading
+  #              day at all (weekends/holidays) are never requested.
+  intervals:
+    1d:  {max_lookback_days: null, window_days: null, overlap_days: 7, refresh_hours: 12}
+    1h:  {max_lookback_days: 729,  window_days: 730,  overlap_days: 2, refresh_hours: 96}
+    15m: {max_lookback_days: 59,   window_days: 60,   overlap_days: 1, refresh_hours: 96}
+    5m:  {max_lookback_days: 59,   window_days: 60,   overlap_days: 1, refresh_hours: 12}
+    1m:  {max_lookback_days: 29,   window_days: 7,    overlap_days: 1, refresh_hours: 12}
+
+# ---------------------------------------------------------------------------
+# Angel One SmartAPI - historical data (and later, live trading)
+# ---------------------------------------------------------------------------
+angelone:
+  # NOTE: Angel One's documented limit for getCandleData is ~3 req/s, but their own SmartAPI forum has
+  # multiple unresolved reports of it falsely rejecting requests even at ~1 request per 5 minutes
+  # (https://smartapi.angelone.in/smartapi/forum/topic/5639). We go far slower than the documented
+  # limit and treat rejections as routine, not exceptional - same philosophy as the yfinance section.
+  requests_per_minute: 15           # 1 request every 4 s on average - well under the documented 3 req/s
+  burst: 2
+  request_timeout_seconds: 30
+  max_retries: 6
+  backoff_base_seconds: 30
+  backoff_max_seconds: 900
+  circuit_breaker_threshold: 3
+  circuit_breaker_pause_seconds: 1800
+  lock_stale_hours: 12
+  instrument_master_url: https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json
+  instrument_master_refresh_hours: 24
+  session_login_max_retries: 3
+
+  # window_days: max calendar days per request. These are the commonly-reported values; if Angel's API
+  # rejects a request for too large a range, the downloader halves the window for that interval at
+  # runtime, logs a warning, and retries - so an exact a-priori number isn't required.
+  intervals:
+    1m:  {window_days: 30,  refresh_hours: 12}
+    3m:  {window_days: 60,  refresh_hours: 12}
+    5m:  {window_days: 100, refresh_hours: 12}
+    10m: {window_days: 100, refresh_hours: 24}
+    15m: {window_days: 200, refresh_hours: 24}
+    30m: {window_days: 200, refresh_hours: 24}
+    1h:  {window_days: 400, refresh_hours: 24}
+    1d:  {window_days: 2000, refresh_hours: 24}
+
+# ---------------------------------------------------------------------------
+# Universe
+# ---------------------------------------------------------------------------
+universe:
+  default: nifty500
+  index_lists:                      # niftyindices.com constituent CSVs
+    nifty50:  ind_nifty50list.csv
+    nifty100: ind_nifty100list.csv
+    nifty200: ind_nifty200list.csv
+    nifty500: ind_nifty500list.csv
+  # Index / benchmark tickers downloaded alongside stocks (Yahoo symbols).
+  # Verified 2026-09-27: these have full history on Yahoo. Most sector indices (^CNXAUTO, ^CNXFMCG,
+  # ^CNXMETAL, ^CNXREALTY, ^CNXENERGY, ^CNXPSUBANK, ^CNXFIN, ...) return only the latest bar on Yahoo,
+  # so sector indices will be built from constituent stocks instead (industry column of the NIFTY 500 list).
+  indices:
+    - "^NSEI"        # NIFTY 50
+    - "^NSEBANK"     # NIFTY BANK
+    - "^INDIAVIX"    # India VIX
+    - "^CNXIT"       # NIFTY IT
+    - "^CNXPHARMA"   # NIFTY PHARMA
+    - "^NSMIDCP"     # NIFTY NEXT 50
+    - "^CNX100"      # NIFTY 100
+    - "^CRSLDX"      # NIFTY 500
+    - "^NSEMDCP50"   # NIFTY MIDCAP 50
+  calendar_reference: "^NSEI"       # its daily bars define which historical days were trading days
+  intraday_min_avg_turnover_cr: 10  # intraday universe: 20-day average turnover >= this many Rs crore
+  liquidity_lookback_days: 20
+
+# ---------------------------------------------------------------------------
+# Data cleaning (raw -> clean)
+# ---------------------------------------------------------------------------
+cleaning:
+  ohlc_fix_tolerance: 0.001         # OHLC inconsistencies smaller than 0.1% are repaired, larger ones dropped
+  spike_atr_mult: 8                 # a bar more than this many ATRs away that immediately reverses = bad tick
+  atr_window: 20
+  stale_run_intraday: 10            # this many identical zero-volume bars in a row = stale feed
+  stale_run_daily: 3
+  max_missing_bar_frac: 0.10        # intraday day with more than 10% bars missing is marked unusable
+  # Yahoo's NSE intraday data is only reliable until 15:15 IST: stock bars stop there, and index bars after
+  # 15:15 are frozen copies of the 15:15 price (verified on real data 2026-09-27). Bars starting at or after
+  # this time are dropped and not counted as gaps. Harmless for us: intraday positions square off at 15:15.
+  intraday_data_end: "15:15"
+  crosscheck_hl_tolerance: 0.02     # intraday high/low vs daily high/low mismatch > 2% marks day unusable
+  min_quality_score: 70             # symbols/intervals below this are excluded from backtests
